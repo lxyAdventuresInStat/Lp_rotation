@@ -1,1 +1,307 @@
+---
+title: "big_5_rcode_GB.Men"
+author: "Xinyi"
+date: "15/03/2022"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
 
+```{r setup, include=FALSE}
+options(digits=3)
+knitr::opts_chunk$set(fig.width=16)
+computer='LIUX114'
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this
+
+
+```{r cars}
+# Paralell COMPUTING AND DATA
+library(parallel)
+library(foreach)
+library(doParallel)
+no_cores <- detectCores()
+registerDoParallel(makeCluster(no_cores-1))
+# Data
+library(arm)
+library(ggplot2)
+setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/BIG5/BIG5'))
+Big5.dat<-read.csv('data.csv',header=TRUE, stringsAsFactors = T,sep = '\t')
+summary(Big5.dat$country)
+# British male
+Big5.GB<-subset(Big5.dat,country=="GB")
+Big5.GB.M<-subset(Big5.GB,gender==1)  
+dat<-Big5.GB.M
+n_row<-50
+n_col<-5
+N<-nrow(dat)
+print(N)
+S<-cov(dat[8:57],dat[8:57])
+var_nam=c()
+for( j in 1:n_row){
+  var_nam<-c(var_nam,paste0('x',j))}
+colnames(S)[1:n_row] <- var_nam
+rownames(S)[1:n_row] <- var_nam
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+# CONVERT Q-MATRIX TO CFA SYNTAX
+modeltext<-function(L_tmp){
+  main=''
+  #std.lv=T
+  for (i in 1:n_col){
+    t=0
+    for (j in 1:n_row)
+    {if(L_tmp[j,i]!=0){
+      if(t==0){
+        tmp=paste0('y',i,'=~','NA*','x',j)
+      }else{
+        tmp=paste0('+','x',j)
+      }
+      t=1 
+      main=paste0(main, tmp)
+      
+    } 
+    } 
+    main=paste0(main,'\n')
+  }
+  main=paste0(main, '# orthogonal factors\n')
+  for ( i in 1:n_col){
+    if (!all(!L_tmp[,i])){
+      main = paste0(main,'y',i,'~~','1*y',i,'\n')}
+  }
+  main=paste0(main, '# constrains\n')
+  for ( j in 1:n_row){
+    main = paste0(main,'x',j,'~~','c',j,'*','x',j,'\n')
+    main = paste0(main,'c',j,'>0','\n')}
+  return(main)
+}
+# CALCULATE BIC WITH DIFFERENT THRESHOLDS
+refit2<-function(L_zeros,S_list,N){
+  main<-modeltext(L_zeros)
+  fit <-cfa(main,sample.cov=S_list,sample.nobs=N,se="none")
+  L_cfa<-matrix(rep(0,n_row*n_col),n_row,n_col)
+  L_num_coef<-sum(L_zeros)
+  L_cfa[which(L_zeros!=0)]<-coef(fit)[1:L_num_coef]
+  # Column swap and sign flip
+  ans_permfilp=permfilp407(L_cfa)
+  L_cfa=ans_permfilp$L_new0
+  D2=ans_permfilp$D2
+  return(list(bic=BIC(fit),
+              L=L_cfa,
+              cov=D2%*%lavInspect(fit, 'cov.lv')%*%D2
+               ))
+}
+#CALCULATE CONFIDENCE INTERVAL
+CI_refit2<-function(L_zeros,S,N){
+n_row <-nrow(L_zeros)
+t1<-proc.time()
+bound<-foreach(k = 1:n_row, .combine=rbind,.packages=c('lavaan'),.export=c('L_zeros','S','N','modeltext','permfilp407')) %dopar% {
+  n_row<-nrow(L_zeros)
+  n_col<-ncol(L_zeros)
+  L_tmp<-L_zeros
+  L_tmp[k,]<-1
+  main<-modeltext(L_tmp)
+  fit <-cfa(main,sample.cov=S,sample.nobs=N) 
+  L_cfa<-matrix(rep(0,n_row*n_col),n_row,n_col)
+  L_cfa[which(L_tmp!=0)]<-coef(fit)[1:sum(L_tmp)]
+  # Column-swap and sign-flip
+  ans_pf=permfilp407(L_cfa)
+  D2=ans_pf$D2
+  L_uppertmp<-matrix(0,n_row,n_col)
+  L_uppertmp[which(L_tmp!=0)]<-parameterEstimates(fit)$ci.upper[1:sum(L_tmp)]
+  L_lowertmp<-matrix(0,n_row,n_col)
+  L_lowertmp[which(L_tmp!=0)]<-parameterEstimates(fit)$ci.lower[1:sum(L_tmp)]
+  L_l=L_l0=L_lowertmp[k,]%*%D2
+  L_u=L_u0=L_uppertmp[k,]%*%D2
+  #The sign-flip may cause the upper bound is smaller than lower bound, we here adjust it
+  for( i in 1:n_col)
+  {if(D2[i,i]<0){
+    L_l[i]=L_u0[i]
+    L_u[i]=L_l0[i]
+  }
+  }
+  c(L_l,L_u)
+}
+print((proc.time()-t1)[3])
+  return(bound)
+}
+
+# PERMUTATION AND SIGN-FLIP
+permfilp407 <- function(L_irls){
+  # sign filp
+  D2=diag(rep(5,1))
+  n_col=ncol(L_irls)
+  L_new0<-L_irls
+  # column swap
+  #library(gtools)
+   for( i in 1:n_col){
+  L_new0[,i]<-L_irls[,which.max(colSums(abs(L_irls)[(i*10-10+1:10),]))]
+     }
+  signs=c(1,-1,-1,1,1)
+  for( i in 1:n_col){
+    if(L_new0[(i*10-9),i]*signs[i]<0){
+      L_new0[,i]<- -L_new0[,i]
+      D2[i,i]=-1}
+    }
+     
+  return(list(L_new0=L_new0,D2=D2))
+}
+# L_P ROTATION + HARD-THRESHOLDING_BIC + CONFIDENCE INTERVAL
+Calculate_bound<-function(L_varimax,S,N,p,n_row=50,n_col=5,T0=diag(rep(1,n_col))){
+c_list<-c(seq(0.06,0.3,by=0.02))
+
+# L_P ROTATION
+irls_result<-irls(p,L_varimax,T=T0)
+ans_pf=permfilp407(irls_result$L)
+print(round(irls_result$L,3))
+L_irls <-ans_pf$L_new0
+T_irls<-irls_result$T
+print('irls covariance')
+print(round(t(T_irls)%*%T_irls,3))
+
+#HARD-THRESHOLDING_BIC
+bic<-Inf
+print('bic_new=bic+bic_ex')
+for (j in 1:length(c_list)){
+  L_zeros=abs(L_irls)>c_list[j]
+  refit_result<-refit2(L_zeros,S,N)
+  bic_ex=log(choose(n_row*n_col,sum(L_zeros)))
+  bic_new<-refit_result[[1]]+bic_ex
+  print(paste(bic_new,'=',refit_result[[1]],'+',bic_ex))
+  if(bic_new<bic){
+    bic<-bic_new
+    L_bic<-refit_result[[2]]
+    cov_bic<-refit_result[[3]]
+    c<-c_list[j]
+    print(c_list[j])
+  }
+}
+
+print('loading matrix selected by bic')
+print(round(L_bic,3))
+print(table(L_bic!=0))
+print('covariance matrix selected by bic')
+print(round(cov_bic,3))
+
+# CONFIDENCE INTERVAL
+L_new_bic<-L_bic!=0
+CI_results<-CI_refit2(L_new_bic,S,N)
+print('lower bound for 95% Confidence interval')
+print('upper bound for 95% Confidence interval')
+print(round(CI_results,3))
+print('elements that are rejected as zeros')
+
+#L_zeros IS SIGN MATRIX DETERMINED BY CI
+L_zeros=!((CI_results[,1:5]<0)&(CI_results[,6:10]>0))
+L_zeros[which((CI_results[,1:5]<0)&(CI_results[,6:10]<0))]=-1
+L_zeros[which((CI_results[,1:5]>0)&(CI_results[,6:10]>0))]=1
+L_zeros[which(is.na(CI_results[,1:5]))]=Inf
+print(round(L_zeros,2))
+print(table(L_zeros!=0))
+ if(F){
+write.csv(round(t(T_irls)%*%T_irls,3),file = paste0("531cov",p,".csv"))
+write.csv(round(CI_results,3),file = paste0("531CI_res",p,".csv"))
+write.csv(round(irls_result$L,3),file = paste0("531L_irls",p,".csv"))}
+ 
+return(list( L_bic=L_bic,L_zeros=L_zeros,
+             cov_bic=cov_bic,
+             CI=CI_results,
+             L_irls=L_irls,
+             T_irls=T_irls))
+}
+```
+
+
+```{r}
+#INITIAL VALUE
+library(lavaan)
+setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/0508'))
+source('cl510_oblique_rotation_function.R')
+#L_TMP is the active set, an upper triangular matrix
+L_tmp<-matrix(1,n_row,n_col)
+L_tmp[upper.tri(L_tmp)]<-0
+fit <-cfa(modeltext(L_tmp),
+          sample.cov=S,
+          orthogonal=T,
+          sample.nobs=N)
+L_num_coef<-(n_row*n_col-(n_col-1)*n_col/2)
+#L_cfa is contrained to an upper triangular matrix to ensure identifiability
+L_cfa<-matrix(rep(0,n_row*n_col),n_row,n_col)
+L_cfa[lower.tri(L_cfa,diag=TRUE)]<-coef(fit)[1:L_num_coef]
+#use varimax rotation as a warm start
+L_varimax<-L_cfa %*% varimax(L_cfa)$rotmat
+L_varimax <-permfilp407(L_varimax)$L_new0
+
+#TRUE LOADING MATRIX
+L_big5<-matrix(0,50,5)
+L_big5[1:10,1]=c(1,-1,1,-1,1,-1,1,-1,1,-1)
+L_big5[10+1:10,2]=c(-1,1,-1,1,-1,-1,-1,-1,-1,-1)
+L_big5[20+1:10,3]=c(-1,1,-1,1,-1,1,-1,1,1,1)
+L_big5[30+1:10,4]=c(1,-1,1,-1,1,-1,1,-1,1,1)
+L_big5[40+1:10,5]=c(1,-1,1,-1,1,-1,1,1,1,1)
+```
+
+
+
+```{r}
+res_1<-Calculate_bound(L_varimax,S,N,1)
+
+```
+
+
+
+
+```{r,fig.height=14}
+res_0.5<-Calculate_bound(L_varimax,S,N,0.5,T0=res_1$T_irls)
+```
+
+
+```{r,fig.height=15}
+# generate graph
+library("lattice")
+library('gridExtra')
+visual<-function(L,name,ifnew){
+colnames(L) <- c('E','ES','A','C','O')
+rownames(L) <- paste( rep("Q",nrow(L)) , c(1:nrow(L)) , sep=" ")
+return(levelplot(t(L[c(nrow(L):1),]),xlab="big 5 character", ylab='items',at=c(-1.3, seq(-1.05, 1.05, 0.1), 1.3),
+          colorkey = list(tri.lower = TRUE, tri.upper = TRUE),
+           main=name) )
+
+}
+
+setwd('C:/Users/LIUX114/OneDrive - London School of Economics/0517/graph')
+
+pdf(file='6_7res_test1.pdf',width=15, height = 10)
+p1<-visual(L_big5,'True big5 matrix',F)
+p2<-visual(round(res_0.5$L_bic,2),'L_bic0.5',T)
+p3<-visual(res_0.5$L_zeros,'L_zeros0.5',T)
+p4<-visual(round(res_1$L_bic,2),'L_bic1',T)
+p5<-visual(res_1$L_zeros,'L_zeros1',F)
+grid.arrange(p1,p2,p3,p4,p5,nrow=1)
+dev.off()
+pdf(file='6_7res_test_2.pdf',width=9, height = 10)
+
+#p6<-visual(L_varimax,'L_varimax',T)
+p6<-visual(L_big5,'True Loadings',F)
+p7<-visual(res_0.5$L_irls,'p=0.5',T)
+p8<-visual(res_1$L_irls,'p=1',T)
+grid.arrange(p6,p7,p8,nrow=1)
+dev.off()
+```
+
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
