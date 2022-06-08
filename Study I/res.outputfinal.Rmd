@@ -1,0 +1,314 @@
+---
+title: "plot for output 15S30S30L"
+author: "Xinyi"
+date: "15/04/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=10,fig.height=3)
+computer='LIUX114'
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+AUC_cal<-function(TPR,TNR){
+id <- 1:(length(TNR))
+AUC <- sum(diff((1-TPR)[id])*rollmean(TNR[id],2))}
+#"mse","AUC","bic.tr","bic.TPR","bic.TNR","t","it"
+line<-function(out,j,sim){
+  mse=mean(sapply(1:sim,function(i,out){out[[i]][[j]]$mse},out=out))
+  TPR=rowMeans(sapply(1:sim,function(i,out){out[[i]][[j]]$TPR},out=out))
+  TNR=rowMeans(sapply(1:sim,function(i,out){out[[i]][[j]]$TNR},out=out))
+  tpr=c(1,TPR)
+  tnr=c(0,TNR)
+  AUC=AUC_cal(tpr,tnr)
+  #AUC=mean(sapply(1:sim,function(i,out){out[[i]][[j]]$mse},out=out))
+  bic.tr=mean(sapply(1:sim,function(i,out){out[[i]][[j]]$L_bic.res$TR},out=out))
+  bic.TPR=mean(sapply(1:sim,function(i,out){out[[i]][[j]]$L_bic.res$TPR},out=out))
+  bic.TNR=mean(sapply(1:sim,function(i,out){out[[i]][[j]]$L_bic.res$TNR},out=out))
+  it=mean(sapply(1:sim,function(i,out){out[[i]][[j]]$it},out=out))
+  t=mean(sapply(1:sim,function(i,out){out[[i]][[j]]$t},out=out))
+  return(c( mse,AUC,bic.tr,bic.TPR,bic.TNR,t,it))
+}
+res.output<-function(filename,ifl=T,ifprint=F){
+library(ggplot2)
+library(zoo)
+library(gridExtra)
+  library(ggpubr)
+load(filename)
+L_old=L!=0
+print(L)
+print(B)
+print(P)
+
+paras = matrix(0,1,4)
+colnames(paras) = c('sim','N','t','seed') 
+paras[1,]=c(sim,N,t,seed)
+print(paras)
+
+
+t=it=bic=AUC=TPR=TNR=L_class=na.flag=list()
+res.all = matrix(0,8,7)
+names=rownames(res.all) = c("oblimin","irls1","irls0.5", "lasso0.01", "lasso0.05","lasso0.1","lasso0.2","lasso0.5")
+colnames(res.all) = c("mse","AUC","bic.tr","bic.TPR","bic.TNR","t","it") 
+res.all[1,1]=mean(sapply(1:sim,function(i,out){out[[i]][[1]]$mse},out=out))
+for (j in 2:8){
+  res.all[j,]=line(out,j,sim)
+}
+print(res.all)
+# #TPR
+# TPR$irls0.5=rowMeans(sapply(1:sim,function(i,out){out[[i]]$irls0.5$TPR},out=out))
+# TPR$irls1=rowMeans(sapply(1:sim,function(i,out){out[[i]]$irls1$TPR},out=out))
+# if(ifl){
+# TPR$lasso.ap=rowMeans(sapply(1:sim,function(i,out){out[[i]]$lasso.ap$TPR},out=out))
+# TPR$lasso=rowMeans(sapply(1:sim,function(i,out){out[[i]]$lasso$TPR},out=out))
+# }
+# #TNR
+# TNR$irls0.5=rowMeans(sapply(1:sim,function(i,out){out[[i]]$irls0.5$TNR},out=out))
+# TNR$irls1=rowMeans(sapply(1:sim,function(i,out){out[[i]]$irls1$TNR},out=out))
+# if(ifl){
+# TNR$lasso.ap=rowMeans(sapply(1:sim,function(i,out){out[[i]]$lasso.ap$TNR},out=out))
+# TNR$lasso=rowMeans(sapply(1:sim,function(i,out){out[[i]]$lasso$TNR},out=out))
+# }
+# #AUC
+# res.all[,3]=c(
+# mean(sapply(1:sim,function(i,out){out[[i]]$irls0.5$AUC},out=out)),
+# mean(sapply(1:sim,function(i,out){out[[i]]$irls1$AUC},out=out)),
+# mean(sapply(1:sim,function(i,out){out[[i]]$lasso.ap$AUC},out=out)),
+# mean(sapply(1:sim,function(i,out){out[[i]]$lasso$AUC},out=out))
+# )
+# 
+# 
+# #L_bic.res$TR
+# bic$TR$irls0.5=sapply(1:sim,function(i,out){out[[i]]$irls0.5$L_bic.res$TR},out=out)
+# bic$TR$irls1=sapply(1:sim,function(i,out){out[[i]]$irls1$L_bic.res$TR},out=out)
+# bic$TR$lasso.ap=sapply(1:sim,function(i,out){out[[i]]$lasso.ap$L_bic.res$TR},out=out)
+# bic$TR$lasso=sapply(1:sim,function(i,out){out[[i]]$lasso$L_bic.res$TR},out=out)
+
+
+
+
+res.ci=matrix(0,2,4)
+rownames(res.ci) = c("irls0.5","irls1")
+colnames(res.ci) = c("ci.tr","ci.type-1","ci.type-2",'nas')
+print('na$irls0.5')
+nalist0.5=sapply(1:sim,function(i,out){!all(!is.infinite(out[[i]]$irls0.5$L_lower))},out=out)
+res.ci[1,4]=sum(nalist0.5)
+print(which(nalist0.5!=0))
+print('na$irls1')
+nalist1=sapply(1:sim,function(i,out){!all(!is.infinite(out[[i]]$irls1$L_lower))},out=out)
+res.ci[2,4]=sum(nalist1)
+print(which(nalist1!=0))
+# 
+# 
+# 
+#names=c("IRLS,p=0.5","IRLS,p=1","Lasso Approximation","Lasso Path")
+#par(mfrow=c(2,2),oma=c(0,0,3,0))
+nmeth <- ifelse(ifl == T, 8, 2)
+par(mfrow=c(1,nmeth-1),oma=c(0,0,3,0))
+for(j in 2:nmeth){
+  bic.tr=sapply(1:sim,function(i,out){out[[i]][[j]]$L_bic.res$TR},out=out)
+boxplot(bic.tr,
+     xlab=names[j],ylab='',main= paste0('bic selection TR(',names[j],')'),ylim = c(0.75,1),
+     sub=paste('TPR =',round(res.all[j,4],3),'TNR =',round(res.all[j,5],3)))
+}
+# 
+# 
+# par(mfrow=c(2,2),oma=c(0,0,3,0))
+# for(i in 1:nmeth){
+#   tpr=c(1,TPR[[i]])
+#   tnr=c(0,TNR[[i]])
+# plot(1-tpr,tnr,type='l',ylim = c(0,1),xlim=c(0,1),
+#      xlab='1-TPR',ylab='TNR',main= paste0('ROC curve (',names[i],')'),
+#      sub=paste('AUC =',round(AUC_cal(tpr,tnr),3)))
+# }
+# 
+#ci_coverage_by_entry
+
+L_class$irls1= rowMeans(sapply(1:sim,function(i,out){out[[i]]$irls1$L_class},out=out))
+L_class$irls0.5= rowMeans(sapply(1:sim,function(i,out){out[[i]]$irls0.5$L_class},out=out))
+
+L_old=L!=0
+#p<-par(mfrow=c(1,2),oma=c(0,0,3,0))
+fl=list()
+for(i in 1:2){
+dat=data.frame(class=as.factor(as.numeric(L_old)),
+               CI_coverage= L_class[[i]])
+a=aggregate(dat$CI_coverage, list(dat$class), FUN=mean) [2]
+res.ci[i,1]=mean(dat$CI_coverage)
+res.ci[i,2]=1-a[1,1]
+res.ci[i,3]=1-a[2,1]
+fl[[i]]<-ggplot(dat, aes(x=class,y=CI_coverage)) + geom_boxplot()+labs(title=names[i+1],
+           x=expression(paste(lambda[ij],"!=0?")),y='Entrywise CI coverage')+ylim(0.92,0.98)
+}
+f<-ggarrange(fl[[1]],fl[[2]],
+             ncol = 2, nrow = 1)+labs(title=paste('NSim',sim,'NSamples',N,'',nrow(L),'*',ncol(L),'data sets'))
+annotate_figure(f, top = text_grob(paste('NSim',sim,'NSamples',N,'',nrow(L),'*',ncol(L),'data sets'), face = "bold", size = 16))
+print(f)
+# print(ggarrange(fl[[1]],fl[[2]], 
+#              ncol = 2, nrow = 1))
+
+#paste('NSim',sim,'NSamples',N,'',nrow(L),'*',ncol(L),'data sets'),
+#print(res.all)
+#print(res.ci)
+write.csv(res.all,file = paste0("res.all",filename,".csv"))
+write.csv(res.all,file = paste0("res.ci",filename,".csv"))
+if(ifprint){
+out[[1]]$lasso=within(out[[1]]$lasso, rm(L))
+print(out[[1]],digits = 3)}
+return(list(res.all,res.ci))
+}
+```
+
+```{r}
+setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/0508'))
+library(ggplot2)
+library(ggpubr)
+
+gen.dat<-function(filename,n){
+  setwd(paste0('C:/Users/LIUX114/OneDrive - London School of Economics/0508'))
+load(filename)
+L_class=list()
+L_class$irls1= rowMeans(sapply(1:sim,function(i,out){out[[i]]$irls1$L_class},out=out))
+L_class$irls0.5= rowMeans(sapply(1:sim,function(i,out){out[[i]]$irls0.5$L_class},out=out))
+L_old=L!=0
+#p<-par(mfrow=c(1,2),oma=c(0,0,3,0))
+names= c("oblimin","irls1","irls0.5", "lasso0.01", "lasso0.05","lasso0.1","lasso0.2","lasso0.5")
+dat1=data.frame(class1=as.numeric(L_old),
+              ECIC= L_class[[1]],p=1,n=n)
+dat1$m=with(dat1,n+10*p+class1)
+dat2=data.frame(class1=as.numeric(L_old),p=0.5,
+              ECIC= L_class[[2]],n=n)
+dat2$m=with(dat2,n+10*p+class1)
+
+dat=rbind(dat1,dat2)
+return(dat)}
+
+pdf(file='15_3.pdf',width=15, height = 6.5)
+#par(pin = c(5,5))
+dat400=gen.dat("0510A.15S_Fa_CI_p15k3nsim500nsample400.RData",400)
+dat800=gen.dat("0510A.15L_Fa_CI_p15k3nsim500nsample800.RData",800)
+dat1600=gen.dat("0510A.15L_Fa_CI_p15k3nsim500nsample1600.RData",1600)
+dat=rbind(dat400,dat800,dat1600)
+ggplot(dat, aes(x=as.factor(m),y=ECIC,color=as.factor(p))) + geom_boxplot()+labs(colour= 'p',#x=class1,#title=names[2],#x=expression(paste(lambda[ij],"!=0?"))
+           y='ECIC',x='')+ylim(0.925,0.975)+#+xlab(c('0','1','0','1','0','1','0','1'))
+scale_x_discrete(labels=c('0 \n n=400','1 \n n=400','0 \n n=400','1 \n n=400','0 \n n=800','1 \n n=800','0 \n n=800','1 \n n=800','0 \n n=1600','1 \n n=1600','0 \n n=1600','1 \n n=1600')) +theme_set(theme_bw())+theme(panel.grid.major=element_line(colour=NA))+theme(text = element_text(size = 23))
+
+dev.off()#limits=colorder,
+# f2<-ggplot(dat2, aes(x=class,y=CI_coverage)) + geom_boxplot()+labs(title=names[3],
+#            x=expression(paste(lambda[ij],"!=0?")),y='Entrywise CI coverage')+ylim(0.92,0.98)
+# 
+# f<-ggarrange(f1,f2,
+#              ncol = 2, nrow = 1)#+labs(title=paste('NSim',sim,'NSamples',N,'',nrow(L),'*',ncol(L),'data sets'))
+# annotate_figure(f, top = text_grob(paste('NSim',sim,'NSamples',N,'',nrow(L),'*',ncol(L),'data sets'), face = "bold", size = 16))
+
+```
+```{r}
+setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/0508'))
+library(ggplot2)
+library(ggpubr)
+
+gen.dat<-function(filename,n){
+  setwd(paste0('C:/Users/LIUX114/OneDrive - London School of Economics/0508'))
+load(filename)
+L_class=list()
+L_class$irls1= rowMeans(sapply(1:sim,function(i,out){out[[i]]$irls1$L_class},out=out))
+L_class$irls0.5= rowMeans(sapply(1:sim,function(i,out){out[[i]]$irls0.5$L_class},out=out))
+L_old=L!=0
+#p<-par(mfrow=c(1,2),oma=c(0,0,3,0))
+names= c("oblimin","irls1","irls0.5", "lasso0.01", "lasso0.05","lasso0.1","lasso0.2","lasso0.5")
+dat1=data.frame(class1=as.numeric(L_old),
+              ECIC= L_class[[1]],p=1,n=n)
+dat1$m=with(dat1,n+10*p+class1)
+dat2=data.frame(class1=as.numeric(L_old),p=0.5,
+              ECIC= L_class[[2]],n=n)
+dat2$m=with(dat2,n+10*p+class1)
+
+dat=rbind(dat1,dat2)
+return(dat)}
+
+pdf(file='30_5.pdf',width=15, height = 6.5)
+#par(pin = c(5,5))
+dat400=gen.dat("0510A.30S_Fa_CI_p30k5nsim500nsample400.RData",400)
+dat800=gen.dat("0510A.30L_Fa_CI_p30k5nsim500nsample800.RData",800)
+dat1600=gen.dat("0510A.30L_Fa_CI_p30k5nsim500nsample1600.RData",1600)
+dat=rbind(dat400,dat800,dat1600)
+ggplot(dat, aes(x=as.factor(m),y=ECIC,color=as.factor(p))) + geom_boxplot()+labs(colour= 'p',#x=class1,#title=names[2],#x=expression(paste(lambda[ij],"!=0?"))
+           y='ECIC',x='')+ylim(0.925,0.975)+#+xlab(c('0','1','0','1','0','1','0','1'))
+scale_x_discrete(labels=c('0 \n n=400','1 \n n=400','0 \n n=400','1 \n n=400','0 \n n=800','1 \n n=800','0 \n n=800','1 \n n=800','0 \n n=1600','1 \n n=1600','0 \n n=1600','1 \n n=1600')) +theme_set(theme_bw())+theme(panel.grid.major=element_line(colour=NA))+theme(text = element_text(size = 23))
+
+dev.off()#limits=colorder,
+# f2<-ggplot(dat2, aes(x=class,y=CI_coverage)) + geom_boxplot()+labs(title=names[3],
+#            x=expression(paste(lambda[ij],"!=0?")),y='Entrywise CI coverage')+ylim(0.92,0.98)
+# 
+# f<-ggarrange(f1,f2,
+#              ncol = 2, nrow = 1)#+labs(title=paste('NSim',sim,'NSamples',N,'',nrow(L),'*',ncol(L),'data sets'))
+# annotate_figure(f, top = text_grob(paste('NSim',sim,'NSamples',N,'',nrow(L),'*',ncol(L),'data sets'), face = "bold", size = 16))
+```
+
+
+```{r}
+filename="0510A.15S_Fa_CI_p15k3nsim500nsample400.RData"
+#setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/0508'))
+#res.output(filename,T)
+```
+
+
+## Including Plots
+```{r}
+filename="0510A.15L_Fa_CI_p15k3nsim500nsample800.RData"
+# setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/0508'))
+# res.output(filename,T)
+ 
+ 
+```
+
+```{r}
+filename="0510A.15L_Fa_CI_p15k3nsim500nsample1600.RData"
+setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/0508'))
+res.output(filename,T)
+```
+
+
+You can also embed plots, for example:
+```{r}
+filename='0510A.30S_Fa_CI_p30k5nsim500nsample400.RData'
+# setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/0508'))
+# res.output(filename,T)
+```
+
+
+```{r }
+filename='0510A.30L_Fa_CI_p30k5nsim500nsample800.RData'
+# setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/0508'))
+# res.output(filename,T)
+```
+
+
+```{r}
+filename='0510A.30L_Fa_CI_p30k5nsim500nsample1600.RData'
+setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/0508'))
+res.output(filename,T)
+```
+
+
+```{r}
+filename='0510A.30L_Fa_CI_p30k5nsim500nsample3200.RData'
+setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/0508'))
+res.output(filename,T)
+```
+
+
+```{r}
+filename='0510A.30S_Fa_CI_p30k5nsim500nsample6400.RData'
+setwd(paste0('C:/Users/',computer,'/OneDrive - London School of Economics/0508'))
+res.output(filename,T)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
